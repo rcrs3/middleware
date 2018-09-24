@@ -3,7 +3,8 @@ package main
 import (
     "fmt"
     "net"
-    "os"
+	"bufio"
+	"strings"
 )
 
 import (
@@ -17,22 +18,27 @@ const (
 )
 
 func main() {
-	ln, err := net.Listen("tcp", ":8080")
-	if err != nil {
-		// handle error
-	}
+	client := crh.CRH{0, "", ""}
+	a := make([]byte, 1024)
+	go client.Send(a)
+
+	fmt.Println("Launching server...")
+
+	// listen on all interfaces
+	ln, _ := net.Listen("tcp", ":8081")
+
+	// accept connection on port
+	conn, _ := ln.Accept()
+
+	// run loop forever (or until ctrl-c)
 	for {
-		conn, err := ln.Accept()
-		if err != nil {
-			// handle error
-		}
-		
-		reply := make([]byte, 1024)
-		
-		_, err = conn.Read(reply)
-		if err != null {
-			fmt.Println("error main")
-			os.exit(1)
-		}
+		// will listen for message to process ending in newline (\n)
+		message, _ := bufio.NewReader(conn).ReadString('\n')
+		// output message received
+		fmt.Print("Message Received:", string(message))
+		// sample process for string received
+		newmessage := strings.ToUpper(message)
+		// send new string back to client
+		conn.Write([]byte(newmessage + "\n"))
 	}
 }

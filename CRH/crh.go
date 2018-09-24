@@ -3,7 +3,8 @@ package crh
 import (
     "fmt"
     "net"
-    "os"
+	"os"
+	"bufio"
 )
 
 type CRH struct {
@@ -27,21 +28,12 @@ func (c CRH) Send(msg []byte) {
 	case MIDDLEWARE:
 		sendMiddleware(msg)
 	}
-
-
-
 }
 
 func sendTcp(msg []byte, c CRH) {
-	l, err := net.Listen(c.Host, +":"+c.Port)
-    if err != nil {
-        fmt.Println("Error listening:", err.Error())
-        os.Exit(1)
-	}
-
-	l.Write([]byte("Message received."))
-
-	l.Close()
+	// connect to this socket
+	conn, _ := net.Dial("tcp", "127.0.0.1:8081")
+	fmt.Fprintf(conn, msg)
 }
 
 func sendUdp(msg []byte) {
