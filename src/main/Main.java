@@ -1,5 +1,7 @@
 package main;
 
+import java.io.IOException;
+
 import crh.ClientRequestHandler;
 import srh.ServerRequestHandler;
 import utils.ConnectionType;
@@ -7,62 +9,77 @@ import utils.ConnectionType;
 public class Main {
 
 	public static void main(String[] args) {
-		// TODO Auto-generated method stub
-		ClientRequestHandler client;
-		try {
-			client = new ClientRequestHandler("localhost", 3333, ConnectionType.UDP);
-			
-			String str = "SENDEI";
-			byte[] b = str.getBytes();
-			
-			
-			
-			new Thread() {
-				public void run() {
-					
-					try {
-						
-							client.send(b);
-							client.receive();
-					} catch (Exception e) {
-						// TODO Auto-generated catch block
-						e.printStackTrace();
-					}
-				}
-			}.start();
-			
-			
-		} catch (Exception e1) {
-			// TODO Auto-generated catch block
-			e1.printStackTrace();
-		}
-		
-		ServerRequestHandler server;
-		try {
-			server = new ServerRequestHandler(3333, ConnectionType.UDP);
+		new Thread() {
+			@Override
+			public void run() {
+				ServerRequestHandler srh = new ServerRequestHandler(2424, ConnectionType.UDP);
+				try {
+					while (true) {
+						System.out.println("esperando conexao");
 
-			new Thread() {
-				public void run() {
-					try {
-						while(true) {
-							server.receive();
-							String str = "AAAAA";
-							byte[] b = str.getBytes();
-							
-							server.send(b);
+						byte[] msg = srh.receive();
+						System.out.println("mensagem recebida");
+
+						for (byte b : msg) {
+							System.out.print(b);
+							System.out.print(" ");
 						}
-					} catch (Exception e) {
-						// TODO Auto-generated catch block
-						e.printStackTrace();
+						System.out.println("");
+
+						byte[] msgToClient = { 1, 4, 5 };
+						System.out.println("mensagem para o client");
+
+						for (byte b : msgToClient) {
+							System.out.print(b);
+							System.out.print(" ");
+						}
+						System.out.println("");
+
+						srh.send(msgToClient);
+
 					}
+				} catch (IOException e) {
+					e.printStackTrace();
+				} catch (InterruptedException e) {
+					e.printStackTrace();
 				}
-			}.start();
-			
-		} catch (Exception e1) {
+			}
+		}.start();
+
+		try {
+			Thread.sleep(1000);
+		} catch (InterruptedException e1) {
 			// TODO Auto-generated catch block
 			e1.printStackTrace();
 		}
-		
+		ClientRequestHandler crh = new ClientRequestHandler("localhost", 2424, ConnectionType.UDP);
+
+		try {
+			byte[] msgToServer = { 1, 6, 9 };
+			System.out.println("mensagem enviada para o servidor");
+
+			for (byte b : msgToServer) {
+				System.out.print(b);
+				System.out.print(" ");
+			}
+			System.out.println("");
+
+			crh.send(msgToServer);
+
+			byte[] msgFromServer = crh.receive();
+			System.out.println("mensagem recebida do servidor");
+
+			for (byte b : msgFromServer) {
+				System.out.print(b);
+				System.out.print(" ");
+			}
+			System.out.println("");
+		} catch (IOException e) {
+			e.printStackTrace();
+		} catch (InterruptedException e) {
+			e.printStackTrace();
+		}
+
 	}
 
 }
