@@ -23,28 +23,40 @@ func (c CRH) Send(msg []byte) {
 	case TCP:
 		sendTcp(msg, c)
 	case UDP:
-		sendUdp(msg)
+		fmt.Println("SEND UDP")
+		sendUdp(msg, c)
 	case MIDDLEWARE:
 		sendMiddleware(msg)
 	}
-
-
-
 }
 
 func sendTcp(msg []byte, c CRH) {
-	l, err := net.Listen(c.Host, +":"+c.Port)
-    if err != nil {
+	
+}
+
+func sendUdp(msg []byte, c CRH) {
+	RemoteAddr, err := net.ResolveUDPAddr("udp", c.Host + ":" + c.Port)
+
+	if err != nil {
         fmt.Println("Error listening:", err.Error())
         os.Exit(1)
 	}
 
-	l.Write([]byte("Message received."))
+	conn, err := net.DialUDP("udp", nil, RemoteAddr)
 
-	l.Close()
-}
+	defer conn.Close()
 
-func sendUdp(msg []byte) {
+	if err != nil {
+        fmt.Println("Error listening:", err.Error())
+        os.Exit(1)
+	}
+
+	_, err = conn.Write(msg)
+
+	if err != nil {
+        fmt.Println("Error writing:", err.Error())
+        os.Exit(1)
+	}
 
 }
 
@@ -52,6 +64,18 @@ func sendMiddleware(msg []byte) {
 
 }
 
-func Receive() {
+func (c CRH) Receive() {
+	switch c.TransportType {
+	case TCP:
+		fmt.Println("TCP")
+	case UDP:
+		fmt.Println("UDP")
+		receiveUdp(c)
+	case MIDDLEWARE:
+		fmt.Println("MIDDLEWARE")
+	}
+}
+
+func receiveUdp(c CRH) {
 
 }
