@@ -6,12 +6,15 @@ import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
-import java.net.SocketException;
-import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
+import java.rmi.RemoteException;
+import java.util.concurrent.TimeoutException;
+
+import com.rabbitmq.client.*;
+
 import java.net.Socket;
 
-
+import utils.ByteArray;
 import utils.ConnectionType;
 
 public class ClientRequestHandler {
@@ -29,26 +32,25 @@ public class ClientRequestHandler {
 		this.connectionType = connectionType;
 	}
 
-	public void send(byte[] msg) throws IOException, InterruptedException {
+	public void send(byte[] msg) throws IOException, InterruptedException, TimeoutException {
 		switch(connectionType) {
 		case TCP:
 			sendTcp(msg);
 		case UDP:
 			sendUdp(msg);
 		case MIDDLEWARE:
-		
+			sendRMQ(msg);
 		}
 	}
 	
-	public byte[] receive() throws IOException, InterruptedException {
+	public byte[] receive() throws Exception {
 		switch (connectionType) {
 		case TCP:
 			return this.msgReceived;
 		case UDP:
 			return receiveUdp();
 		case MIDDLEWARE:
-
-			break;
+			return receiveRMQ();
 		}
 		return null;
 	}
@@ -107,4 +109,47 @@ public class ClientRequestHandler {
 		inFromServer.read(this.msgReceived);
 		socket.close();
 	}
+	
+	public void sendRMQ(byte[] msg) throws IOException, TimeoutException {
+		ConnectionFactory factory = new ConnectionFactory();
+	    factory.setHost("localhost");
+	    Connection connection = factory.newConnection();
+	    Channel channel = connection.createChannel();
+
+	    channel.queueDeclare("server", true, false, false, null);
+
+	    channel.basicPublish( "", "server",
+	            MessageProperties.PERSISTENT_TEXT_PLAIN,
+	            msg);
+
+	    channel.close();
+	    connection.close();
+	}
+	
+	public byte[] receiveRMQ() throws Exception {
+		ConnectionFactory factory = new ConnectionFactory();
+	    factory.setHost("localhost");
+	    final Connection connection = factory.newConnection();
+	    final Channel channel = connection.createChannel();
+
+	    channel.queueDeclare("client", true, false, false, null);
+
+	    channel.basicQos(1);
+	    
+	    ByteArray ret = new ByteArray();
+	    
+	    final Consumer consumer = new DefaultConsumer(channel) {
+	      @Override
+	      public void handleDelivery(String consumerTag, Envelope envelope, AMQP.BasicProperties properties, byte[] body) throws IOException {
+	        String message = new String(body, "UTF-8");
+	        
+	        ret.setBytes(message.getBytes());
+	      }
+	    };
+	    boolean autoAck = false;
+	    channel.basicConsume("client", autoAck, consumer);
+	    
+		return ret.getBytes();
+	}
+	
 }

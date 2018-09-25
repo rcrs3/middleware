@@ -1,4 +1,5 @@
 package srh;
+
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
@@ -8,12 +9,11 @@ import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.ByteBuffer;
-import java.util.Arrays;
+import java.util.concurrent.TimeoutException;
 
-import javax.management.RuntimeErrorException;
+import com.rabbitmq.client.*;
 
-import org.omg.PortableServer.ThreadPolicyOperations;
-
+import utils.ByteArray;
 import utils.ConnectionType;
 
 public class ServerRequestHandler {
@@ -27,11 +27,12 @@ public class ServerRequestHandler {
 	private int portClient;
 
 	public ServerRequestHandler(int port, ConnectionType connectionType) {
+		super();
 		this.port = port;
 		this.connectionType = connectionType;
 	}
 
-	public void send(byte[] msg) throws IOException, InterruptedException {
+	public void send(byte[] msg) throws IOException, InterruptedException, TimeoutException {
 		switch (connectionType) {
 		case TCP:
 			sendTcp(msg);
@@ -40,26 +41,19 @@ public class ServerRequestHandler {
 			sendUdp(msg);
 			break;
 		case MIDDLEWARE:
-
-			break;
-
-		default:
+			sendRMQ(msg);
 			break;
 		}
 	}
 
-	public byte[] receive() throws IOException, InterruptedException {
+	public byte[] receive() throws IOException, InterruptedException, TimeoutException {
 		switch (connectionType) {
 		case TCP:
 			return receiveTcp();
 		case UDP:
 			return receiveUdp();
 		case MIDDLEWARE:
-
-			break;
-
-		default:
-			break;
+			return receiveRMQ();
 		}
 		return null;
 	}
@@ -130,4 +124,47 @@ public class ServerRequestHandler {
 	    
 		s.send(sendPacket);
 	}
+	
+	public void sendRMQ(byte[] msg) throws IOException, TimeoutException {
+		ConnectionFactory factory = new ConnectionFactory();
+	    factory.setHost("localhost");
+	    Connection connection = factory.newConnection();
+	    Channel channel = connection.createChannel();
+
+	    channel.queueDeclare("client", true, false, false, null);
+
+	    channel.basicPublish( "", "client",
+	            MessageProperties.PERSISTENT_TEXT_PLAIN,
+	            msg);
+
+	    channel.close();
+	    connection.close();
+	}
+	
+	public byte[] receiveRMQ() throws IOException, TimeoutException {
+		ConnectionFactory factory = new ConnectionFactory();
+	    factory.setHost("localhost");
+	    final Connection connection = factory.newConnection();
+	    final Channel channel = connection.createChannel();
+
+	    channel.queueDeclare("server", true, false, false, null);
+
+	    channel.basicQos(1);
+	    
+	    ByteArray ret = new ByteArray();
+	    
+	    final Consumer consumer = new DefaultConsumer(channel) {
+	      @Override
+	      public void handleDelivery(String consumerTag, Envelope envelope, AMQP.BasicProperties properties, byte[] body) throws IOException {
+	        String message = new String(body, "UTF-8");
+	        
+	        ret.setBytes(message.getBytes());
+	      }
+	    };
+	    boolean autoAck = false;
+	    channel.basicConsume("server", autoAck, consumer);
+	    
+		return ret.getBytes();
+	}
+	
 }

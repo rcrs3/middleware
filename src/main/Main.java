@@ -1,6 +1,7 @@
 package main;
 
 import java.io.IOException;
+import java.util.concurrent.TimeoutException;
 
 import crh.ClientRequestHandler;
 import srh.ServerRequestHandler;
@@ -12,8 +13,10 @@ public class Main {
 		new Thread() {
 			@Override
 			public void run() {
-				ServerRequestHandler srh = new ServerRequestHandler(2424, ConnectionType.UDP);
+				
 				try {
+					ServerRequestHandler srh = new ServerRequestHandler(2424, ConnectionType.MIDDLEWARE);
+					
 					while (true) {
 						System.out.println("esperando conexao");
 
@@ -42,6 +45,9 @@ public class Main {
 					e.printStackTrace();
 				} catch (InterruptedException e) {
 					e.printStackTrace();
+				} catch (TimeoutException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
 				}
 			}
 		}.start();
@@ -52,9 +58,11 @@ public class Main {
 			// TODO Auto-generated catch block
 			e1.printStackTrace();
 		}
-		ClientRequestHandler crh = new ClientRequestHandler("localhost", 2424, ConnectionType.UDP);
+		
 
 		try {
+			ClientRequestHandler crh = new ClientRequestHandler("localhost", 2424, ConnectionType.MIDDLEWARE);
+			
 			byte[] msgToServer = { 1, 6, 9 };
 			System.out.println("mensagem enviada para o servidor");
 
@@ -77,6 +85,12 @@ public class Main {
 		} catch (IOException e) {
 			e.printStackTrace();
 		} catch (InterruptedException e) {
+			e.printStackTrace();
+		} catch (TimeoutException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		} catch (Exception e) {
+			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
 
