@@ -9,9 +9,8 @@ import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.ByteBuffer;
-import java.rmi.Naming;
-import java.rmi.RemoteException;
-import java.rmi.server.UnicastRemoteObject;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.TimeoutException;
@@ -23,28 +22,65 @@ import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.ConnectionFactory;
 import com.rabbitmq.client.Consumer;
 import com.rabbitmq.client.DefaultConsumer;
-import com.rabbitmq.client.Delivery;
 import com.rabbitmq.client.Envelope;
-import com.rabbitmq.client.RpcServer;
-import com.rabbitmq.client.StringRpcServer;
 
 import utils.ConnectionType;
 
 public class ServerRequestHandler {
 	private int port;
 	private ConnectionType connectionType;
-	private Socket socket;
-	private ServerSocket serverSocketTcp;
-	private int receivedMessageSize;
-	private DatagramSocket serverSocketUdp;
-	private String hostClient;
-	private int portClient;
-	private String msgToSent;
 
-	public ServerRequestHandler(int port, ConnectionType connectionType) throws RemoteException {
+	//tcp
+	private DataInputStream inFromClient;
+	private DataOutputStream outToClient;
+
+	//udp
+	private DatagramSocket datagramUDP;
+	private int clientPort;
+	private InetAddress clientAdress;
+
+	//middleware
+	Channel channel;
+	final BlockingQueue<byte[]> msg = new ArrayBlockingQueue<>(1);
+	Consumer consumer;
+	public ServerRequestHandler(int port, ConnectionType connectionType) throws IOException, TimeoutException {
 		super();
 		this.port = port;
 		this.connectionType = connectionType;
+
+
+
+		switch (connectionType) {
+			case TCP:
+				ServerSocket serverSocketTcp = new ServerSocket(port);
+				Socket socket = serverSocketTcp.accept();
+				inFromClient = new DataInputStream(socket.getInputStream());
+				outToClient = new DataOutputStream(socket.getOutputStream());
+				break;
+			case UDP:
+				datagramUDP = new DatagramSocket(this.port);
+				break;
+			case MIDDLEWARE:
+				ConnectionFactory factory = new ConnectionFactory();
+				factory.setHost("localhost");
+				Connection connection = factory.newConnection();
+				channel = connection.createChannel();
+
+				Map<String, Object> args = new HashMap<String, Object>();
+				args.put("x-max-length", 1);
+
+				channel.queueDeclare("md1", false, false, false, args);
+				channel.queueDeclare("md2", false, false, false, args);
+
+				consumer = new DefaultConsumer(channel) {
+					@Override
+					public void handleDelivery(String consumerTag, Envelope envelope, AMQP.BasicProperties properties,
+											   byte[] body) throws IOException {
+						msg.add(body);
+					}
+				};
+				break;
+		}
 	}
 
 	public void send(byte[] msg) throws IOException, InterruptedException, TimeoutException {
@@ -74,37 +110,22 @@ public class ServerRequestHandler {
 	}
 
 	private byte[] receiveTcp() throws IOException {
-		if (serverSocketTcp == null) {
-			serverSocketTcp = new ServerSocket(port);
-		}
-		this.socket = serverSocketTcp.accept();
-		DataInputStream inFromClient = new DataInputStream(socket.getInputStream());
-		this.receivedMessageSize = inFromClient.readInt();
-
-		byte[] msg = new byte[this.receivedMessageSize];
-		inFromClient.read(msg);
+		int receivedMessageSize = inFromClient.readInt();
+		byte[] msg = new byte[receivedMessageSize];
+		inFromClient.read(msg, 0, receivedMessageSize);
 		return msg;
 	}
 
 	public void sendTcp(byte[] msg) throws IOException, InterruptedException {
-		if (socket == null) {
-			throw new RuntimeException("none accepted connection");
-		}
-
-		DataOutputStream outToClient = new DataOutputStream(socket.getOutputStream());
 		outToClient.writeInt(msg.length);
-		outToClient.write(msg);
-		socket.close();
+		outToClient.write(msg, 0, msg.length);
 	}
 
 	private byte[] receiveUdp() throws IOException, InterruptedException {
-		if (serverSocketUdp == null)
-			serverSocketUdp = new DatagramSocket(this.port);
-
 		byte[] bytes = new byte[4];
 
 		DatagramPacket receiveSize = new DatagramPacket(bytes, bytes.length);
-		serverSocketUdp.receive(receiveSize);
+		datagramUDP.receive(receiveSize);
 
 		int size = ByteBuffer.wrap(bytes).getInt();
 
@@ -112,58 +133,32 @@ public class ServerRequestHandler {
 
 		DatagramPacket receivePacket = new DatagramPacket(receiveData, size);
 
-		serverSocketUdp.receive(receivePacket);
+		datagramUDP.receive(receivePacket);
 
-		this.portClient = receivePacket.getPort();
-		this.hostClient = receivePacket.getAddress().getHostName();
+		this.clientPort = receivePacket.getPort();
+		this.clientAdress = receivePacket.getAddress();
 
 		return receiveData;
 	}
 
 	private void sendUdp(byte[] msg) throws IOException, InterruptedException {
-		DatagramSocket s = new DatagramSocket();
-		InetAddress IPAddress = InetAddress.getByName(this.hostClient);
-
 		byte[] bytes = new byte[4];
 		ByteBuffer.wrap(bytes).putInt(msg.length);
 
-		DatagramPacket sendSize = new DatagramPacket(bytes, bytes.length, IPAddress, this.portClient);
+		DatagramPacket sendSize = new DatagramPacket(bytes, bytes.length, clientAdress, clientPort);
 
-		s.send(sendSize);
+		datagramUDP.send(sendSize);
 
-		Thread.sleep(10);
+		DatagramPacket sendPacket = new DatagramPacket(msg, msg.length, clientAdress, clientPort);
 
-		DatagramPacket sendPacket = new DatagramPacket(msg, msg.length, IPAddress, this.portClient);
-
-		s.send(sendPacket);
+		datagramUDP.send(sendPacket);
 	}
 
 	public void sendRMQ(byte[] msg) throws IOException, TimeoutException {
-		ConnectionFactory factory = new ConnectionFactory();
-		factory.setHost("localhost");
-		Connection connection = factory.newConnection();
-		Channel channel = connection.createChannel();
-
-		channel.queueDeclare("md1", false, false, false, null);
 		channel.basicPublish("", "md2", null, msg);
 	}
 
 	public byte[] receiveRMQ() throws IOException, TimeoutException, InterruptedException {
-		ConnectionFactory factory = new ConnectionFactory();
-		factory.setHost("localhost");
-		Connection connection = factory.newConnection();
-		Channel channel = connection.createChannel();
-
-		channel.queueDeclare("md1", false, false, false, null);
-
-		final BlockingQueue<byte[]> msg = new ArrayBlockingQueue<>(1);
-		Consumer consumer = new DefaultConsumer(channel) {
-			@Override
-			public void handleDelivery(String consumerTag, Envelope envelope, AMQP.BasicProperties properties,
-					byte[] body) throws IOException {
-				msg.add(body);
-			}
-		};
 		channel.basicConsume("md1", true, consumer);
 		return msg.take();
 	}
