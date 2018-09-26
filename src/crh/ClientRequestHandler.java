@@ -118,7 +118,7 @@ public class ClientRequestHandler {
 
 	public void sendRMQ(byte[] msg) throws IOException, TimeoutException {
 		ConnectionFactory factory = new ConnectionFactory();
-		factory.setHost("localhost");
+		factory.setHost(this.host);
 		Connection connection = factory.newConnection();
 		Channel channel = connection.createChannel();
 
@@ -128,7 +128,7 @@ public class ClientRequestHandler {
 
 	public byte[] receiveRMQ() throws Exception {
 		ConnectionFactory factory = new ConnectionFactory();
-		factory.setHost("localhost");
+		factory.setHost(this.host);
 		Connection connection = factory.newConnection();
 		Channel channel = connection.createChannel();
 
